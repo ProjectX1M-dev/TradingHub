@@ -16,9 +16,32 @@ const mt5ApiService = {
       console.log('🔄 Connecting to MT5 API with credentials:', {
         accountNumber: credentials.accountNumber,
         serverName: credentials.serverName,
+        apiUrl: MT5_API_URL,
+        hasApiKey: !!MT5_API_KEY,
+        apiKeyLength: MT5_API_KEY ? MT5_API_KEY.length : 0,
         // Don't log password for security
         passwordProvided: !!credentials.password
       });
+
+      // Check if API key is provided
+      if (!MT5_API_KEY) {
+        console.error('❌ MT5 API key is missing from environment variables');
+        return {
+          success: false,
+          token: null,
+          message: 'MT5 API key is not configured. Please check your environment variables.'
+        };
+      }
+
+      // Check if API URL is provided
+      if (!MT5_API_URL) {
+        console.error('❌ MT5 API URL is missing from environment variables');
+        return {
+          success: false,
+          token: null,
+          message: 'MT5 API URL is not configured. Please check your environment variables.'
+        };
+      }
 
       // Use GET request with URL parameters instead of POST
       const params = new URLSearchParams({
@@ -28,30 +51,91 @@ const mt5ApiService = {
         apiKey: MT5_API_KEY
       });
 
-      const response = await axios.get(`${MT5_API_URL}/ConnectEx?${params.toString()}`);
+      console.log('🔗 Making request to:', `${MT5_API_URL}/ConnectEx`);
+      console.log('📋 Request parameters:', {
+        accountNumber: credentials.accountNumber,
+        serverName: credentials.serverName,
+        hasPassword: !!credentials.password,
+        hasApiKey: !!MT5_API_KEY
+      });
+
+      const response = await axios.get(`${MT5_API_URL}/ConnectEx?${params.toString()}`, {
+        timeout: 30000, // 30 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
 
       console.log('✅ MT5 API connection response:', {
         status: response.status,
         statusText: response.statusText,
-        hasToken: !!response.data.token
+        hasToken: !!response.data?.token,
+        responseData: response.data
       });
 
       // Store the token for future requests
-      mt5Token = response.data.token;
+      if (response.data?.token) {
+        mt5Token = response.data.token;
+      }
 
       return {
         success: true,
-        token: response.data.token,
-        message: 'Connected successfully'
+        token: response.data?.token || null,
+        message: response.data?.message || 'Connected successfully'
       };
     } catch (error) {
       console.error('❌ MT5 API connection error:', error);
       
       let errorMessage = 'Failed to connect to MT5 API';
       
-      if (axios.isAxiosError(error) && error.response) {
-        errorMessage = `MT5 API error: ${error.response.status} - ${error.response.statusText}`;
-        console.error('❌ MT5 API error details:', error.response.data);
+      if (axios.isAxiosError(error)) {
+        if (error.response) {
+          const status = error.response.status;
+          const statusText = error.response.statusText;
+          const responseData = error.response.data;
+          
+          console.error('❌ MT5 API error details:', {
+            status,
+            statusText,
+            data: responseData,
+            headers: error.response.headers
+          });
+          
+          // Provide more specific error messages based on status code
+          switch (status) {
+            case 401:
+              errorMessage = 'Authentication failed. Please check your MT5 API key configuration or verify your account credentials.';
+              break;
+            case 403:
+              errorMessage = 'Access forbidden. Your MT5 API key may not have the required permissions.';
+              break;
+            case 404:
+              errorMessage = 'MT5 API endpoint not found. Please check the API URL configuration.';
+              break;
+            case 429:
+              errorMessage = 'Too many requests. Please wait a moment and try again.';
+              break;
+            case 500:
+              errorMessage = 'MT5 API server error. Please try again later.';
+              break;
+            case 503:
+              errorMessage = 'MT5 API service unavailable. Please try again later.';
+              break;
+            default:
+              if (responseData && typeof responseData === 'string') {
+                errorMessage = `MT5 API error: ${responseData}`;
+              } else {
+                errorMessage = `MT5 API error: ${status} - ${statusText}`;
+              }
+          }
+        } else if (error.request) {
+          console.error('❌ No response received from MT5 API:', error.request);
+          errorMessage = 'No response from MT5 API. Please check your internet connection and API URL.';
+        } else {
+          console.error('❌ Error setting up MT5 API request:', error.message);
+          errorMessage = `Request setup error: ${error.message}`;
+        }
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
@@ -83,10 +167,22 @@ const mt5ApiService = {
       }
 
       // Get account summary
-      const summaryResponse = await axios.get(`${MT5_API_URL}/AccountSummary?id=${mt5Token}`);
+      const summaryResponse = await axios.get(`${MT5_API_URL}/AccountSummary?id=${mt5Token}`, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       // Get account details
-      const detailsResponse = await axios.get(`${MT5_API_URL}/AccountDetails?id=${mt5Token}`);
+      const detailsResponse = await axios.get(`${MT5_API_URL}/AccountDetails?id=${mt5Token}`, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
 
       // Combine the data
       const accountInfo = {
@@ -132,7 +228,13 @@ const mt5ApiService = {
         throw new Error('Not connected to MT5 API');
       }
 
-      const response = await axios.get(`${MT5_API_URL}/Positions?id=${mt5Token}`);
+      const response = await axios.get(`${MT5_API_URL}/Positions?id=${mt5Token}`, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       // Transform the response data to match our Position interface
       const positions: Position[] = response.data.map((pos: any) => ({
@@ -178,7 +280,13 @@ const mt5ApiService = {
         throw new Error('Not connected to MT5 API');
       }
 
-      const response = await axios.get(`${MT5_API_URL}/SymbolList?id=${mt5Token}`);
+      const response = await axios.get(`${MT5_API_URL}/SymbolList?id=${mt5Token}`, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       // Ensure we have an array of strings
       let symbols: string[] = [];
@@ -209,7 +317,13 @@ const mt5ApiService = {
         throw new Error('Not connected to MT5 API');
       }
 
-      const response = await axios.get(`${MT5_API_URL}/GetQuote?id=${mt5Token}&symbol=${symbol}`);
+      const response = await axios.get(`${MT5_API_URL}/GetQuote?id=${mt5Token}&symbol=${symbol}`, {
+        timeout: 10000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       return {
         bid: response.data.bid,
@@ -260,7 +374,13 @@ const mt5ApiService = {
 
       console.log('🔄 Sending order to MT5 API:', requestData);
       
-      const response = await axios.post(`${MT5_API_URL}/OrderSend`, requestData);
+      const response = await axios.post(`${MT5_API_URL}/OrderSend`, requestData, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       console.log('✅ MT5 API order response:', response.data);
       
@@ -327,7 +447,13 @@ const mt5ApiService = {
 
       console.log('🔄 Sending close position request to MT5 API:', requestData);
       
-      const response = await axios.post(`${MT5_API_URL}/OrderClose`, requestData);
+      const response = await axios.post(`${MT5_API_URL}/OrderClose`, requestData, {
+        timeout: 15000,
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
+        }
+      });
       
       console.log('✅ MT5 API close position response:', response.data);
       
