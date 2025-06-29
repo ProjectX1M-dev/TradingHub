@@ -553,6 +553,21 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         return false;
       }
 
+      // Find the robot that should process this signal
+      let targetRobot: Robot | undefined;
+      
+      if (signalData.botToken) {
+        // If botToken is provided, find the specific robot
+        targetRobot = get().robots.find(r => r.botToken === signalData.botToken && r.isActive);
+        console.log(`🤖 Looking for robot with token ${signalData.botToken}:`, targetRobot ? `Found: ${targetRobot.name}` : 'Not found');
+      } else {
+        // Otherwise, find a robot that matches the symbol or has null symbol
+        targetRobot = get().robots.find(r => 
+          r.isActive && (r.symbol === signalData.symbol || r.symbol === null)
+        );
+        console.log(`🤖 Looking for robot matching symbol ${signalData.symbol}:`, targetRobot ? `Found: ${targetRobot.name}` : 'Not found');
+      }
+
       let orderResult: any;
       let success = false;
 
@@ -570,11 +585,16 @@ export const useTradingStore = create<TradingState>((set, get) => ({
             orderResult = { retcode: 10009, comment: 'Position already closed or not found' };
             success = true;
           } else {
+            // Get position details before closing for performance tracking
+            const positionToClose = get().positions.find(p => p.ticket === signalData.ticket);
+            const positionProfit = positionToClose?.profit || 0;
+            
             // Close the specific position
             success = await get().forceClosePosition(signalData.ticket);
             orderResult = { 
               retcode: success ? 10009 : 10004, 
-              comment: success ? `Closed position ${signalData.ticket}` : `Failed to close position ${signalData.ticket}`
+              comment: success ? `Closed position ${signalData.ticket}` : `Failed to close position ${signalData.ticket}`,
+              profit: positionProfit // Store the actual profit for performance tracking
             };
           }
         } else {
@@ -589,6 +609,9 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           } else {
             console.log(`Closing ${positionsToClose.length} positions for ${signalData.symbol}`);
             
+            // Calculate total profit before closing for performance tracking
+            const totalProfit = positionsToClose.reduce((sum, pos) => sum + pos.profit, 0);
+            
             let closedCount = 0;
             for (const position of positionsToClose) {
               const closeSuccess = await get().forceClosePosition(position.ticket, position.volume);
@@ -598,7 +621,8 @@ export const useTradingStore = create<TradingState>((set, get) => ({
             success = closedCount > 0;
             orderResult = { 
               retcode: success ? 10009 : 10004, 
-              comment: success ? `Closed ${closedCount} of ${positionsToClose.length} positions` : 'Failed to close positions'
+              comment: success ? `Closed ${closedCount} of ${positionsToClose.length} positions` : 'Failed to close positions',
+              profit: totalProfit // Store the actual total profit for performance tracking
             };
           }
         }
@@ -670,34 +694,70 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           toast.success(`${signalData.action} order executed successfully for ${symbolMessage}`);
         }
         
-        // Update robot performance if botToken is provided
-        if (signalData.botToken) {
-          const robot = get().robots.find(r => r.botToken === signalData.botToken);
-          if (robot) {
-            // Increment total trades
-            const newTotalTrades = robot.performance.totalTrades + 1;
+        // Update robot performance if a robot was found
+        if (targetRobot) {
+          console.log(`🤖 Updating performance for robot: ${targetRobot.name} (${targetRobot.id})`);
+          
+          // Increment total trades
+          const newTotalTrades = targetRobot.performance.totalTrades + 1;
+          
+          // Calculate win/loss based on actual trade result
+          let isWin = false;
+          let profitChange = 0;
+          
+          if (signalData.action === 'CLOSE') {
+            // For CLOSE actions, use the actual profit from the closed position(s)
+            profitChange = orderResult.profit || 0;
+            isWin = profitChange > 0;
+            console.log(`📊 CLOSE action with actual profit: ${profitChange}, isWin: ${isWin}`);
+          } else {
+            // For BUY/SELL actions, we'll need to track the position and update later
+            // For now, we'll just increment the trade count without changing profit/win rate
+            console.log(`📊 ${signalData.action} action - position opened, profit will be tracked on close`);
             
-            // For simplicity, we'll assume a win if it's a CLOSE action
-            // In a real system, you'd track the actual P&L of the trade
-            const isWin = signalData.action === 'CLOSE';
-            
-            // Calculate new win rate
-            const totalWins = isWin 
-              ? Math.round(robot.performance.winRate * robot.performance.totalTrades / 100) + 1
-              : Math.round(robot.performance.winRate * robot.performance.totalTrades / 100);
-            const newWinRate = (totalWins / newTotalTrades) * 100;
-            
-            // Update profit (simplified - in a real system you'd use actual P&L)
-            const profitChange = isWin ? 10 : -5; // Simplified example
-            const newProfit = robot.performance.profit + profitChange;
-            
-            // Update robot performance in database and local state
-            await get().updateRobotPerformance(robot.id, {
-              totalTrades: newTotalTrades,
-              winRate: newWinRate,
-              profit: newProfit
-            });
+            // We can store the ticket number for later reference
+            const ticketNumber = orderResult.ticket || orderResult.order;
+            if (ticketNumber) {
+              console.log(`📊 New position opened with ticket: ${ticketNumber}`);
+            }
           }
+          
+          // Calculate new win rate
+          const totalWins = isWin 
+            ? Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100) + 1
+            : Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100);
+          
+          // Avoid division by zero for new robots
+          const newWinRate = newTotalTrades > 0 ? (totalWins / newTotalTrades) * 100 : 0;
+          
+          // Update profit with actual P&L
+          const newProfit = targetRobot.performance.profit + profitChange;
+          
+          console.log(`🤖 Performance update details:`, {
+            robotId: targetRobot.id,
+            oldTotalTrades: targetRobot.performance.totalTrades,
+            newTotalTrades,
+            oldWinRate: targetRobot.performance.winRate,
+            newWinRate,
+            oldProfit: targetRobot.performance.profit,
+            newProfit,
+            profitChange,
+            isWin,
+            action: signalData.action
+          });
+          
+          // Update robot performance in database and local state
+          await get().updateRobotPerformance(targetRobot.id, {
+            totalTrades: newTotalTrades,
+            winRate: newWinRate,
+            profit: newProfit
+          });
+        } else {
+          console.log(`⚠️ No robot found to update performance for signal:`, {
+            symbol: signalData.symbol,
+            action: signalData.action,
+            botToken: signalData.botToken
+          });
         }
         
         return true;
@@ -756,7 +816,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         toast.success(`Position ${ticket} closed successfully`);
       } else {
         console.error('Close position failed:', result);
-        toast.error(`Failed to close position ${ticket}: ${result.comment || 'Unknown error'}`);
+        toast.error(`Failed to close position ${ticket}: ${result.message || 'Unknown error'}`);
         
         // If close failed, we need to restore the position in cache
         // Force refresh to get the current state
@@ -806,18 +866,28 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       // Immediately remove from cache for instant UI feedback
       get().removeClosedPositionFromCache(ticket);
       
+      // Get position details before closing to capture profit
+      let positionProfit = 0;
+      const positionToClose = get().positions.find(p => p.ticket === ticket);
+      if (positionToClose) {
+        positionProfit = positionToClose.profit;
+        console.log(`📊 Position ${ticket} has profit ${positionProfit} before closing`);
+      }
+      
       // Use the enhanced closePosition method from mt5ApiService
-      // which now handles multiple volume formats internally
+      // which now handles multiple volume formats internally and returns profit
       const result = await mt5ApiService.closePosition(ticket, volume);
       
       if (result.retcode === 10009) {
         console.log(`✅ Position ${ticket} closed successfully using ${result.formatDescription || 'auto-detected format'}`);
+        console.log(`📊 Position ${ticket} closed with profit: ${result.profit !== undefined ? result.profit : positionProfit}`);
+        
         await get().refreshAfterTrade();
         toast.success(`Position ${ticket} closed successfully`);
         return true;
       } else {
         console.error(`❌ Failed to close position ${ticket}:`, result);
-        toast.error(`Failed to close position ${ticket}: ${result.comment || 'Unknown error'}`);
+        toast.error(`Failed to close position ${ticket}: ${result.message || 'Unknown error'}`);
         
         // If close failed, restore the position in cache
         await get().forceRefreshPositions();
@@ -1127,7 +1197,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
     }
   },
 
-  // New method to update robot performance metrics
+  // New method to update robot performance metrics with enhanced logging
   updateRobotPerformance: async (robotId: string, performance: Partial<Robot['performance']>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1166,16 +1236,32 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       }
       updateData.updated_at = new Date().toISOString();
 
+      // Enhanced logging before update
+      console.log(`🔄 [updateRobotPerformance] Updating robot ${robotId} performance with data:`, updateData);
+      console.log(`🔄 [updateRobotPerformance] Robot details: name=${robot.name}, symbol=${robot.symbol}, mt5AccountId=${mt5AccountId}`);
+      console.log(`🔄 [updateRobotPerformance] Current performance: totalTrades=${robot.performance.totalTrades}, winRate=${robot.performance.winRate}, profit=${robot.performance.profit}`);
+      console.log(`🔄 [updateRobotPerformance] New performance: totalTrades=${performance.totalTrades}, winRate=${performance.winRate}, profit=${performance.profit}`);
+
       // Update in database, filtering by both robot ID and MT5 account ID
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('trading_robots')
         .update(updateData)
         .eq('id', robotId)
-        .eq('mt5_account_id', mt5AccountId);
+        .eq('mt5_account_id', mt5AccountId)
+        .select();
 
+      // Log the response
       if (error) {
-        console.error('Error updating robot performance:', error);
+        console.error('❌ [updateRobotPerformance] Error updating robot performance:', error);
+        console.error('❌ [updateRobotPerformance] Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         return;
+      } else {
+        console.log(`✅ [updateRobotPerformance] Database update successful:`, data);
       }
 
       // Update local state
@@ -1193,9 +1279,14 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         )
       }));
 
-      console.log(`Updated performance for robot ${robotId}:`, performance);
+      console.log(`✅ [updateRobotPerformance] Updated performance for robot ${robotId}:`, performance);
+      console.log(`✅ [updateRobotPerformance] Local state updated successfully`);
     } catch (error) {
-      console.error('Error updating robot performance:', error);
+      console.error('❌ [updateRobotPerformance] Unexpected error updating robot performance:', error);
+      if (error instanceof Error) {
+        console.error('❌ [updateRobotPerformance] Error message:', error.message);
+        console.error('❌ [updateRobotPerformance] Error stack:', error.stack);
+      }
     }
   },
 
