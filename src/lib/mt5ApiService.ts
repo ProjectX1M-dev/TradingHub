@@ -2,7 +2,7 @@ import axios from 'axios';
 import { ConnectionResponse, Position } from '../types/mt5';
 
 // Define the MT5 API URL from environment variables
-const MT5_API_URL = import.meta.env.VITE_MT5_API_URL || 'https://mt5.mtapi.io';
+const MT5_API_URL = import.meta.env.VITE_MT5_API_URL || 'https://mt5full2.mtapi.io';
 const MT5_API_KEY = import.meta.env.VITE_MT5_API_KEY || '';
 
 // Store the MT5 token for reuse
