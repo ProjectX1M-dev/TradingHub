@@ -553,9 +553,6 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         return false;
       }
 
-      let orderResult: any;
-      let success = false;
-
       // Find the robot that should process this signal
       let targetRobot: Robot | undefined;
       
@@ -571,6 +568,9 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         console.log(`🤖 Looking for robot matching symbol ${signalData.symbol}:`, targetRobot ? `Found: ${targetRobot.name}` : 'Not found');
       }
 
+      let orderResult: any;
+      let success = false;
+
       // Handle different signal actions
       if (signalData.action === 'CLOSE') {
         // Check if a specific ticket was provided for targeted closing
@@ -585,11 +585,16 @@ export const useTradingStore = create<TradingState>((set, get) => ({
             orderResult = { retcode: 10009, comment: 'Position already closed or not found' };
             success = true;
           } else {
+            // Get position details before closing for performance tracking
+            const positionToClose = get().positions.find(p => p.ticket === signalData.ticket);
+            const positionProfit = positionToClose?.profit || 0;
+            
             // Close the specific position
             success = await get().forceClosePosition(signalData.ticket);
             orderResult = { 
               retcode: success ? 10009 : 10004, 
-              comment: success ? `Closed position ${signalData.ticket}` : `Failed to close position ${signalData.ticket}`
+              comment: success ? `Closed position ${signalData.ticket}` : `Failed to close position ${signalData.ticket}`,
+              profit: positionProfit // Store the actual profit for performance tracking
             };
           }
         } else {
@@ -604,6 +609,9 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           } else {
             console.log(`Closing ${positionsToClose.length} positions for ${signalData.symbol}`);
             
+            // Calculate total profit before closing for performance tracking
+            const totalProfit = positionsToClose.reduce((sum, pos) => sum + pos.profit, 0);
+            
             let closedCount = 0;
             for (const position of positionsToClose) {
               const closeSuccess = await get().forceClosePosition(position.ticket, position.volume);
@@ -613,7 +621,8 @@ export const useTradingStore = create<TradingState>((set, get) => ({
             success = closedCount > 0;
             orderResult = { 
               retcode: success ? 10009 : 10004, 
-              comment: success ? `Closed ${closedCount} of ${positionsToClose.length} positions` : 'Failed to close positions'
+              comment: success ? `Closed ${closedCount} of ${positionsToClose.length} positions` : 'Failed to close positions',
+              profit: totalProfit // Store the actual total profit for performance tracking
             };
           }
         }
@@ -692,32 +701,36 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           // Increment total trades
           const newTotalTrades = targetRobot.performance.totalTrades + 1;
           
-          // For simplicity, we'll assume a win if it's a CLOSE action
-          // In a real system, you'd track the actual P&L of the trade
-          const isWin = signalData.action === 'CLOSE';
+          // Calculate win/loss based on actual trade result
+          let isWin = false;
+          let profitChange = 0;
+          
+          if (signalData.action === 'CLOSE') {
+            // For CLOSE actions, use the actual profit from the closed position(s)
+            profitChange = orderResult.profit || 0;
+            isWin = profitChange > 0;
+            console.log(`📊 CLOSE action with actual profit: ${profitChange}, isWin: ${isWin}`);
+          } else {
+            // For BUY/SELL actions, we'll need to track the position and update later
+            // For now, we'll just increment the trade count without changing profit/win rate
+            console.log(`📊 ${signalData.action} action - position opened, profit will be tracked on close`);
+            
+            // We can store the ticket number for later reference
+            const ticketNumber = orderResult.ticket || orderResult.order;
+            if (ticketNumber) {
+              console.log(`📊 New position opened with ticket: ${ticketNumber}`);
+            }
+          }
           
           // Calculate new win rate
           const totalWins = isWin 
             ? Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100) + 1
             : Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100);
-          const newWinRate = (totalWins / newTotalTrades) * 100;
           
-          // Update profit (simplified - in a real system you'd use actual P&L)
-          // For BUY/SELL, we'll add a small profit/loss based on action
-          // For CLOSE, we'll add a larger profit
-          let profitChange = 0;
+          // Avoid division by zero for new robots
+          const newWinRate = newTotalTrades > 0 ? (totalWins / newTotalTrades) * 100 : 0;
           
-          if (signalData.action === 'CLOSE') {
-            // Assume a profit for CLOSE actions (simulating a successful trade)
-            profitChange = 10.0;
-          } else if (signalData.action === 'BUY') {
-            // Small profit for BUY (simulating a small market movement)
-            profitChange = 0.5;
-          } else if (signalData.action === 'SELL') {
-            // Small loss for SELL (simulating a small market movement)
-            profitChange = -0.5;
-          }
-          
+          // Update profit with actual P&L
           const newProfit = targetRobot.performance.profit + profitChange;
           
           console.log(`🤖 Performance update details:`, {
@@ -729,7 +742,8 @@ export const useTradingStore = create<TradingState>((set, get) => ({
             oldProfit: targetRobot.performance.profit,
             newProfit,
             profitChange,
-            isWin
+            isWin,
+            action: signalData.action
           });
           
           // Update robot performance in database and local state
