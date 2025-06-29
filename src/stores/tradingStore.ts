@@ -816,7 +816,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         toast.success(`Position ${ticket} closed successfully`);
       } else {
         console.error('Close position failed:', result);
-        toast.error(`Failed to close position ${ticket}: ${result.comment || 'Unknown error'}`);
+        toast.error(`Failed to close position ${ticket}: ${result.message || 'Unknown error'}`);
         
         // If close failed, we need to restore the position in cache
         // Force refresh to get the current state
@@ -866,18 +866,28 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       // Immediately remove from cache for instant UI feedback
       get().removeClosedPositionFromCache(ticket);
       
+      // Get position details before closing to capture profit
+      let positionProfit = 0;
+      const positionToClose = get().positions.find(p => p.ticket === ticket);
+      if (positionToClose) {
+        positionProfit = positionToClose.profit;
+        console.log(`📊 Position ${ticket} has profit ${positionProfit} before closing`);
+      }
+      
       // Use the enhanced closePosition method from mt5ApiService
-      // which now handles multiple volume formats internally
+      // which now handles multiple volume formats internally and returns profit
       const result = await mt5ApiService.closePosition(ticket, volume);
       
       if (result.retcode === 10009) {
         console.log(`✅ Position ${ticket} closed successfully using ${result.formatDescription || 'auto-detected format'}`);
+        console.log(`📊 Position ${ticket} closed with profit: ${result.profit !== undefined ? result.profit : positionProfit}`);
+        
         await get().refreshAfterTrade();
         toast.success(`Position ${ticket} closed successfully`);
         return true;
       } else {
         console.error(`❌ Failed to close position ${ticket}:`, result);
-        toast.error(`Failed to close position ${ticket}: ${result.comment || 'Unknown error'}`);
+        toast.error(`Failed to close position ${ticket}: ${result.message || 'Unknown error'}`);
         
         // If close failed, restore the position in cache
         await get().forceRefreshPositions();
