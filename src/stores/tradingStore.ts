@@ -556,6 +556,21 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       let orderResult: any;
       let success = false;
 
+      // Find the robot that should process this signal
+      let targetRobot: Robot | undefined;
+      
+      if (signalData.botToken) {
+        // If botToken is provided, find the specific robot
+        targetRobot = get().robots.find(r => r.botToken === signalData.botToken && r.isActive);
+        console.log(`🤖 Looking for robot with token ${signalData.botToken}:`, targetRobot ? `Found: ${targetRobot.name}` : 'Not found');
+      } else {
+        // Otherwise, find a robot that matches the symbol or has null symbol
+        targetRobot = get().robots.find(r => 
+          r.isActive && (r.symbol === signalData.symbol || r.symbol === null)
+        );
+        console.log(`🤖 Looking for robot matching symbol ${signalData.symbol}:`, targetRobot ? `Found: ${targetRobot.name}` : 'Not found');
+      }
+
       // Handle different signal actions
       if (signalData.action === 'CLOSE') {
         // Check if a specific ticket was provided for targeted closing
@@ -670,34 +685,65 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           toast.success(`${signalData.action} order executed successfully for ${symbolMessage}`);
         }
         
-        // Update robot performance if botToken is provided
-        if (signalData.botToken) {
-          const robot = get().robots.find(r => r.botToken === signalData.botToken);
-          if (robot) {
-            // Increment total trades
-            const newTotalTrades = robot.performance.totalTrades + 1;
-            
-            // For simplicity, we'll assume a win if it's a CLOSE action
-            // In a real system, you'd track the actual P&L of the trade
-            const isWin = signalData.action === 'CLOSE';
-            
-            // Calculate new win rate
-            const totalWins = isWin 
-              ? Math.round(robot.performance.winRate * robot.performance.totalTrades / 100) + 1
-              : Math.round(robot.performance.winRate * robot.performance.totalTrades / 100);
-            const newWinRate = (totalWins / newTotalTrades) * 100;
-            
-            // Update profit (simplified - in a real system you'd use actual P&L)
-            const profitChange = isWin ? 10 : -5; // Simplified example
-            const newProfit = robot.performance.profit + profitChange;
-            
-            // Update robot performance in database and local state
-            await get().updateRobotPerformance(robot.id, {
-              totalTrades: newTotalTrades,
-              winRate: newWinRate,
-              profit: newProfit
-            });
+        // Update robot performance if a robot was found
+        if (targetRobot) {
+          console.log(`🤖 Updating performance for robot: ${targetRobot.name} (${targetRobot.id})`);
+          
+          // Increment total trades
+          const newTotalTrades = targetRobot.performance.totalTrades + 1;
+          
+          // For simplicity, we'll assume a win if it's a CLOSE action
+          // In a real system, you'd track the actual P&L of the trade
+          const isWin = signalData.action === 'CLOSE';
+          
+          // Calculate new win rate
+          const totalWins = isWin 
+            ? Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100) + 1
+            : Math.round(targetRobot.performance.winRate * targetRobot.performance.totalTrades / 100);
+          const newWinRate = (totalWins / newTotalTrades) * 100;
+          
+          // Update profit (simplified - in a real system you'd use actual P&L)
+          // For BUY/SELL, we'll add a small profit/loss based on action
+          // For CLOSE, we'll add a larger profit
+          let profitChange = 0;
+          
+          if (signalData.action === 'CLOSE') {
+            // Assume a profit for CLOSE actions (simulating a successful trade)
+            profitChange = 10.0;
+          } else if (signalData.action === 'BUY') {
+            // Small profit for BUY (simulating a small market movement)
+            profitChange = 0.5;
+          } else if (signalData.action === 'SELL') {
+            // Small loss for SELL (simulating a small market movement)
+            profitChange = -0.5;
           }
+          
+          const newProfit = targetRobot.performance.profit + profitChange;
+          
+          console.log(`🤖 Performance update details:`, {
+            robotId: targetRobot.id,
+            oldTotalTrades: targetRobot.performance.totalTrades,
+            newTotalTrades,
+            oldWinRate: targetRobot.performance.winRate,
+            newWinRate,
+            oldProfit: targetRobot.performance.profit,
+            newProfit,
+            profitChange,
+            isWin
+          });
+          
+          // Update robot performance in database and local state
+          await get().updateRobotPerformance(targetRobot.id, {
+            totalTrades: newTotalTrades,
+            winRate: newWinRate,
+            profit: newProfit
+          });
+        } else {
+          console.log(`⚠️ No robot found to update performance for signal:`, {
+            symbol: signalData.symbol,
+            action: signalData.action,
+            botToken: signalData.botToken
+          });
         }
         
         return true;
