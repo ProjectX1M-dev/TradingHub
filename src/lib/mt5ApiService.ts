@@ -52,60 +52,26 @@ const mt5ApiService = {
         };
       }
 
-      // Try POST request first (more secure for credentials)
-      console.log('🔗 Making POST request to:', `${MT5_API_URL}/ConnectEx`);
-      
-      const requestData = {
+      // Use GET request with URL parameters
+      const params = new URLSearchParams({
         accountNumber: credentials.accountNumber,
         password: credentials.password,
         serverName: credentials.serverName,
         apiKey: MT5_API_KEY
-      };
-
-      console.log('📋 Request data:', {
-        accountNumber: credentials.accountNumber,
-        serverName: credentials.serverName,
-        hasPassword: !!credentials.password,
-        hasApiKey: !!MT5_API_KEY
       });
 
-      let response;
-      
-      try {
-        // Try POST request first
-        response = await axios.post(`${MT5_API_URL}/ConnectEx`, requestData, {
-          timeout: 30000, // 30 second timeout
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'MT5-Trading-App/1.0',
-            'Accept': 'application/json',
-            // Add API key in header as well (some APIs expect it here)
-            'X-API-Key': MT5_API_KEY,
-            'Authorization': `Bearer ${MT5_API_KEY}`
-          }
-        });
-      } catch (postError) {
-        console.log('📋 POST request failed, trying GET request with URL parameters');
-        
-        // If POST fails, try GET request with URL parameters
-        const params = new URLSearchParams({
-          accountNumber: credentials.accountNumber,
-          password: credentials.password,
-          serverName: credentials.serverName,
-          apiKey: MT5_API_KEY
-        });
+      console.log('🔗 Making GET request to:', `${MT5_API_URL}/ConnectEx`);
 
-        response = await axios.get(`${MT5_API_URL}/ConnectEx?${params.toString()}`, {
-          timeout: 30000, // 30 second timeout
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'MT5-Trading-App/1.0',
-            'Accept': 'application/json',
-            'X-API-Key': MT5_API_KEY,
-            'Authorization': `Bearer ${MT5_API_KEY}`
-          }
-        });
-      }
+      const response = await axios.get(`${MT5_API_URL}/ConnectEx?${params.toString()}`, {
+        timeout: 30000, // 30 second timeout
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0',
+          'Accept': 'application/json',
+          'X-API-Key': MT5_API_KEY,
+          'Authorization': `Bearer ${MT5_API_KEY}`
+        }
+      });
 
       console.log('✅ MT5 API connection response:', {
         status: response.status,
@@ -474,23 +440,23 @@ const mt5ApiService = {
       // Convert action to MT5 API format
       const operation = order.action === 'BUY' ? 'Buy' : 'Sell';
       
-      // Prepare the request data
-      const requestData: any = {
+      // Prepare the request parameters
+      const params = new URLSearchParams({
         id: mt5Token,
         symbol: order.symbol,
-        operation,
-        volume: order.volume,
-        slippage: 10
-      };
+        operation: operation,
+        volume: order.volume.toString(),
+        slippage: '10'
+      });
       
       // Add optional parameters if provided
-      if (order.price) requestData.price = order.price;
-      if (order.sl) requestData.stoploss = order.sl;
-      if (order.tp) requestData.takeprofit = order.tp;
+      if (order.price) params.append('price', order.price.toString());
+      if (order.sl) params.append('stoploss', order.sl.toString());
+      if (order.tp) params.append('takeprofit', order.tp.toString());
 
-      console.log('🔄 Sending order to MT5 API:', requestData);
+      console.log('🔄 Sending order to MT5 API:', Object.fromEntries(params));
       
-      const response = await axios.post(`${MT5_API_URL}/OrderSend`, requestData, {
+      const response = await axios.get(`${MT5_API_URL}/OrderSend?${params.toString()}`, {
         timeout: 15000,
         headers: {
           'Content-Type': 'application/json',
@@ -552,20 +518,20 @@ const mt5ApiService = {
         console.warn(`⚠️ Could not get position details before closing: ${posError.message}`);
       }
 
-      // Prepare the request data
-      const requestData: any = {
+      // Prepare the request parameters
+      const params = new URLSearchParams({
         id: mt5Token,
-        ticket
-      };
+        ticket: ticket.toString()
+      });
       
       // Add volume if provided
       if (volume) {
-        requestData.lots = volume;
+        params.append('lots', volume.toString());
       }
 
-      console.log('🔄 Sending close position request to MT5 API:', requestData);
+      console.log('🔄 Sending close position request to MT5 API:', Object.fromEntries(params));
       
-      const response = await axios.post(`${MT5_API_URL}/OrderClose`, requestData, {
+      const response = await axios.get(`${MT5_API_URL}/OrderClose?${params.toString()}`, {
         timeout: 15000,
         headers: {
           'Content-Type': 'application/json',
