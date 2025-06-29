@@ -20,12 +20,15 @@ const mt5ApiService = {
         passwordProvided: !!credentials.password
       });
 
-      const response = await axios.post(`${MT5_API_URL}/ConnectEx`, {
+      // Use GET request with URL parameters instead of POST
+      const params = new URLSearchParams({
         accountNumber: credentials.accountNumber,
         password: credentials.password,
         serverName: credentials.serverName,
         apiKey: MT5_API_KEY
       });
+
+      const response = await axios.get(`${MT5_API_URL}/ConnectEx?${params.toString()}`);
 
       console.log('✅ MT5 API connection response:', {
         status: response.status,
