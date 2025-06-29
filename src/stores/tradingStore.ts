@@ -1127,7 +1127,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
     }
   },
 
-  // New method to update robot performance metrics
+  // New method to update robot performance metrics with enhanced logging
   updateRobotPerformance: async (robotId: string, performance: Partial<Robot['performance']>) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -1166,16 +1166,32 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       }
       updateData.updated_at = new Date().toISOString();
 
+      // Enhanced logging before update
+      console.log(`🔄 [updateRobotPerformance] Updating robot ${robotId} performance with data:`, updateData);
+      console.log(`🔄 [updateRobotPerformance] Robot details: name=${robot.name}, symbol=${robot.symbol}, mt5AccountId=${mt5AccountId}`);
+      console.log(`🔄 [updateRobotPerformance] Current performance: totalTrades=${robot.performance.totalTrades}, winRate=${robot.performance.winRate}, profit=${robot.performance.profit}`);
+      console.log(`🔄 [updateRobotPerformance] New performance: totalTrades=${performance.totalTrades}, winRate=${performance.winRate}, profit=${performance.profit}`);
+
       // Update in database, filtering by both robot ID and MT5 account ID
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('trading_robots')
         .update(updateData)
         .eq('id', robotId)
-        .eq('mt5_account_id', mt5AccountId);
+        .eq('mt5_account_id', mt5AccountId)
+        .select();
 
+      // Log the response
       if (error) {
-        console.error('Error updating robot performance:', error);
+        console.error('❌ [updateRobotPerformance] Error updating robot performance:', error);
+        console.error('❌ [updateRobotPerformance] Error details:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          hint: error.hint
+        });
         return;
+      } else {
+        console.log(`✅ [updateRobotPerformance] Database update successful:`, data);
       }
 
       // Update local state
@@ -1193,9 +1209,14 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         )
       }));
 
-      console.log(`Updated performance for robot ${robotId}:`, performance);
+      console.log(`✅ [updateRobotPerformance] Updated performance for robot ${robotId}:`, performance);
+      console.log(`✅ [updateRobotPerformance] Local state updated successfully`);
     } catch (error) {
-      console.error('Error updating robot performance:', error);
+      console.error('❌ [updateRobotPerformance] Unexpected error updating robot performance:', error);
+      if (error instanceof Error) {
+        console.error('❌ [updateRobotPerformance] Error message:', error.message);
+        console.error('❌ [updateRobotPerformance] Error stack:', error.stack);
+      }
     }
   },
 
