@@ -554,6 +554,41 @@ class MT5ApiService {
     }
   }
 
+  // Get available symbols
+  public async getAvailableSymbols(): Promise<string[]> {
+    if (!this.token) {
+      console.error('❌ No MT5 token available');
+      return [];
+    }
+
+    try {
+      console.log('🔄 Fetching available symbols...');
+      
+      const response = await axios.get(`${this.apiUrl}/SymbolList`, {
+        params: { id: this.token },
+        timeout: 15000
+      });
+      
+      console.log('✅ Available symbols response:', response.data);
+      
+      if (Array.isArray(response.data)) {
+        return response.data;
+      } else {
+        console.error('❌ Invalid symbols data format:', response.data);
+        return [];
+      }
+    } catch (error) {
+      console.error('❌ Error fetching available symbols:', error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
+      return [];
+    }
+  }
+
   // Helper method to convert timeframe to MT5 format
   private convertTimeframe(timeframe: string): string {
     switch (timeframe) {

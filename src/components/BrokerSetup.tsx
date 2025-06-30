@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import mt5ApiService from '../lib/mt5ApiService';
 
 const DEMO_SERVERS = [
   'RoboForex-ECN',
@@ -62,6 +63,7 @@ export const BrokerSetup: React.FC = () => {
   const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
   const [showAddAccount, setShowAddAccount] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
+  const [apiKeyStatus, setApiKeyStatus] = useState<'checking' | 'valid' | 'invalid' | 'unknown'>('checking');
   const [passwordPrompt, setPasswordPrompt] = useState<PasswordPromptModal>({
     isOpen: false,
     account: null,
@@ -77,6 +79,36 @@ export const BrokerSetup: React.FC = () => {
   });
 
   const selectedAccountType = watch('accountType');
+
+  // Check API key status on component mount
+  useEffect(() => {
+    const checkApiKey = async () => {
+      setApiKeyStatus('checking');
+      const apiKey = import.meta.env.VITE_MT5_API_KEY;
+      
+      if (!apiKey) {
+        setApiKeyStatus('invalid');
+        return;
+      }
+      
+      try {
+        // Make a simple request to check if API key is valid
+        const response = await fetch(`${import.meta.env.VITE_MT5_API_URL}/SymbolList?id=${apiKey}`);
+        if (response.ok) {
+          setApiKeyStatus('valid');
+        } else if (response.status === 401) {
+          setApiKeyStatus('invalid');
+        } else {
+          setApiKeyStatus('unknown');
+        }
+      } catch (error) {
+        console.error('Error checking API key:', error);
+        setApiKeyStatus('unknown');
+      }
+    };
+    
+    checkApiKey();
+  }, []);
 
   // Fetch user's saved accounts
   useEffect(() => {
@@ -120,11 +152,29 @@ export const BrokerSetup: React.FC = () => {
     fetchSavedAccounts();
   }, []);
 
+  const resetForm = () => {
+    setFormData({
+      id: '',
+      name: '',
+      description: '',
+      tokenCost: 0,
+      isActive: true,
+      features: [],
+      newFeatureName: '',
+      newFeatureDescription: ''
+    });
+  };
+
   const onSubmit = async (data: BrokerCredentials) => {
     setIsConnecting(true);
     setConnectionError(null);
     
     try {
+      // Check API key status first
+      if (apiKeyStatus === 'invalid') {
+        throw new Error('Invalid MT5 API key. Please check your .env file and restart the server.');
+      }
+      
       // Get current user session
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -178,6 +228,11 @@ export const BrokerSetup: React.FC = () => {
     setConnectionError(null);
     
     try {
+      // Check API key status first
+      if (apiKeyStatus === 'invalid') {
+        throw new Error('Invalid MT5 API key. Please check your .env file and restart the server.');
+      }
+      
       // Get current user session
       const { data: { session } } = await supabase.auth.getSession();
       
@@ -287,6 +342,37 @@ export const BrokerSetup: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Connect Your Broker</h1>
           <p className="text-gray-600 mt-2">Add your MT5 broker account to start trading</p>
         </div>
+
+        {/* API Key Status Warning */}
+        {apiKeyStatus !== 'valid' && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <h3 className="text-red-800 font-medium">⚠️ MT5 API Configuration Issue</h3>
+                <p className="text-red-700 text-sm mt-1">
+                  {apiKeyStatus === 'checking' ? 'Checking MT5 API key status...' :
+                   apiKeyStatus === 'invalid' ? 'Invalid or missing MT5 API key. Please check your .env file and restart the server.' :
+                   'Unable to verify MT5 API key. Please check your internet connection.'}
+                </p>
+                <div className="mt-3">
+                  <p className="text-red-700 text-sm font-medium">Required Environment Variables:</p>
+                  <ul className="text-red-700 text-sm mt-1 list-disc list-inside">
+                    <li>VITE_MT5_API_URL - API endpoint URL</li>
+                    <li>VITE_MT5_API_KEY - Your MT5 API key</li>
+                  </ul>
+                </div>
+                <button
+                  onClick={() => window.location.reload()}
+                  className="mt-3 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm"
+                >
+                  <RefreshCw className="w-4 h-4 inline mr-1" />
+                  Reload After Fixing .env
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Saved Accounts Section */}
         {savedAccounts.length > 0 && (
@@ -428,7 +514,7 @@ export const BrokerSetup: React.FC = () => {
                   <div className="flex items-start space-x-3">
                     <selectedTypeInfo.icon className={`w-5 h-5 text-${selectedTypeInfo.color}-600 flex-shrink-0 mt-0.5`} />
                     <div>
-                      <p className={`text-${selectedTypeInfo.color}-800 text-sm font-medium`}>
+                      <p className={`text-${selectedTypeInfo.color}-800 font-medium`}>
                         {selectedTypeInfo.label} Selected
                       </p>
                       <div className={`text-${selectedTypeInfo.color}-700 text-xs mt-1 space-y-1`}>
@@ -618,7 +704,7 @@ export const BrokerSetup: React.FC = () => {
 
               <button
                 type="submit"
-                disabled={isConnecting}
+                disabled={isConnecting || apiKeyStatus === 'invalid' || apiKeyStatus === 'checking'}
                 className="w-full bg-green-600 text-white py-3 px-4 rounded-lg font-medium hover:bg-green-700 focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
               >
                 {isConnecting ? (
@@ -691,6 +777,23 @@ export const BrokerSetup: React.FC = () => {
                 />
               </div>
 
+              {/* API Key Status Warning */}
+              {apiKeyStatus !== 'valid' && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-red-800 text-xs font-medium">MT5 API Configuration Issue</p>
+                      <p className="text-red-700 text-xs mt-1">
+                        {apiKeyStatus === 'checking' ? 'Checking MT5 API key status...' :
+                         apiKeyStatus === 'invalid' ? 'Invalid or missing MT5 API key. Please check your .env file and restart the server.' :
+                         'Unable to verify MT5 API key. Please check your internet connection.'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Show connection error in modal if it exists */}
               {connectionError && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-3">
@@ -714,7 +817,7 @@ export const BrokerSetup: React.FC = () => {
                 </button>
                 <button
                   onClick={handlePasswordSubmit}
-                  disabled={passwordPrompt.isConnecting || !passwordPrompt.password}
+                  disabled={passwordPrompt.isConnecting || !passwordPrompt.password || apiKeyStatus === 'invalid' || apiKeyStatus === 'checking'}
                   className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center justify-center"
                 >
                   {passwordPrompt.isConnecting ? (
