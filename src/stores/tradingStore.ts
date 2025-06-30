@@ -1357,7 +1357,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
                 ...r, 
                 performance: { 
                   ...r.performance,
-                  ...performance
+                  ...performance,
                  // Preserve floating profit when updating stored profit
                  currentProfit: (performance.profit || r.performance.profit) + (r.performance.floatingProfit || 0),
                 } 
