@@ -127,6 +127,7 @@ class MT5ApiService {
         passwordLength: credentials.password.length
       });
       
+      // Use the correct authentication method - pass API key as 'id' parameter
       const response = await axios.get(`${this.apiUrl}/ConnectEx`, {
         params: {
           id: this.apiKey,
