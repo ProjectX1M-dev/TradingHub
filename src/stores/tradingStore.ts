@@ -321,11 +321,13 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       }
 
       const { data: robotsData, error } = await robotsQuery;
-      const robots: Robot[] = robotsData?.map(robot => {
-        // Calculate floating P&L for this robot
-        const floatingProfit = floatingPnLByBotToken[robot.bot_token] || 0;
-        
-        return {
+
+      if (error) {
+        console.error('Error fetching robots:', error);
+        toast.error('Failed to load trading robots');
+        return;
+      }
+
       // Calculate floating P&L for each robot based on open positions
       const positions = get().positions;
       const floatingPnLByBotToken: Record<string, number> = {};
@@ -358,9 +360,6 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         performance: {
           totalTrades: robot.total_trades || 0,
           winRate: parseFloat(robot.win_rate) || 0,
-          // Add floating profit for real-time display
-          currentProfit: parseFloat(robot.profit) + (floatingPnLByBotToken[robot.bot_token] || 0),
-          floatingProfit: floatingPnLByBotToken[robot.bot_token] || 0,
           profit: parseFloat(robot.profit) || 0,
           // Add floating profit from open positions
           floatingProfit: floatingPnLByBotToken[robot.bot_token] || 0,
