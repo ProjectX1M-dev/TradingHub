@@ -70,6 +70,22 @@ class MT5ApiService {
     
     // Try to load token from localStorage
     this.token = localStorage.getItem('mt5Token');
+    
+    // Validate API key on initialization
+    this.validateApiKey();
+  }
+
+  // Validate API key configuration
+  private validateApiKey(): void {
+    if (!this.apiKey) {
+      console.error('❌ MT5 API Key is missing from environment variables');
+      console.error('💡 Please check your .env file contains VITE_MT5_API_KEY');
+    } else if (this.apiKey.length < 10) {
+      console.error('❌ MT5 API Key appears to be invalid (too short)');
+      console.error('💡 Please verify your VITE_MT5_API_KEY in .env file');
+    } else {
+      console.log('✅ MT5 API Key loaded successfully');
+    }
   }
 
   // Store token for later use
@@ -88,12 +104,40 @@ class MT5ApiService {
     try {
       console.log('🔄 Connecting to MT5 server...');
       
+      // Validate API key before making request
+      if (!this.apiKey) {
+        return {
+          success: false,
+          message: 'Invalid MT5 API key. Please check your .env file contains VITE_MT5_API_KEY and restart the development server.'
+        };
+      }
+
+      if (this.apiKey.length < 10) {
+        return {
+          success: false,
+          message: 'MT5 API key appears to be invalid. Please verify your VITE_MT5_API_KEY in .env file.'
+        };
+      }
+      
+      console.log('🔑 Using API URL:', this.apiUrl);
+      console.log('🔑 API Key configured:', this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NO');
+      console.log('📋 Connection parameters:', {
+        user: credentials.accountNumber,
+        server: credentials.serverName,
+        passwordLength: credentials.password.length
+      });
+      
       const response = await axios.get(`${this.apiUrl}/ConnectEx`, {
         params: {
           id: this.apiKey,
           user: credentials.accountNumber,
           password: credentials.password,
           server: credentials.serverName
+        },
+        timeout: 30000, // 30 second timeout
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'MT5-Trading-App/1.0'
         }
       });
       
@@ -115,9 +159,50 @@ class MT5ApiService {
       }
     } catch (error) {
       console.error('❌ MT5 connection error:', error);
+      
+      // Enhanced error handling for different types of errors
+      if (axios.isAxiosError(error)) {
+        if (error.response?.status === 401) {
+          return {
+            success: false,
+            message: 'Invalid MT5 API key. Please check your .env file contains the correct VITE_MT5_API_KEY and restart the development server.'
+          };
+        } else if (error.response?.status === 403) {
+          return {
+            success: false,
+            message: 'MT5 API access forbidden. Please verify your API key permissions.'
+          };
+        } else if (error.response?.status === 404) {
+          return {
+            success: false,
+            message: 'MT5 API endpoint not found. Please check the API URL configuration.'
+          };
+        } else if (error.response?.status >= 500) {
+          return {
+            success: false,
+            message: 'MT5 API server error. Please try again later or contact support.'
+          };
+        } else if (error.code === 'ECONNREFUSED') {
+          return {
+            success: false,
+            message: 'Cannot connect to MT5 API server. Please check your internet connection.'
+          };
+        } else if (error.code === 'ETIMEDOUT') {
+          return {
+            success: false,
+            message: 'Connection to MT5 API timed out. Please try again.'
+          };
+        } else {
+          return {
+            success: false,
+            message: `MT5 API connection failed: ${error.response?.data || error.message}`
+          };
+        }
+      }
+      
       return {
         success: false,
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown connection error'
       };
     }
   }
@@ -140,12 +225,14 @@ class MT5ApiService {
       
       // First, get account summary
       const summaryResponse = await axios.get(`${this.apiUrl}/AccountSummary`, {
-        params: { id: this.token }
+        params: { id: this.token },
+        timeout: 15000
       });
       
       // Then, get account details
       const detailsResponse = await axios.get(`${this.apiUrl}/AccountDetails`, {
-        params: { id: this.token }
+        params: { id: this.token },
+        timeout: 15000
       });
       
       console.log('✅ MT5 account summary:', summaryResponse.data);
@@ -171,6 +258,12 @@ class MT5ApiService {
       };
     } catch (error) {
       console.error('❌ Error fetching MT5 account info:', error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
       return null;
     }
   }
@@ -186,7 +279,8 @@ class MT5ApiService {
       console.log('🔄 Fetching MT5 positions...');
       
       const response = await axios.get(`${this.apiUrl}/Positions`, {
-        params: { id: this.token }
+        params: { id: this.token },
+        timeout: 15000
       });
       
       console.log('✅ MT5 positions response:', response.data);
@@ -211,6 +305,12 @@ class MT5ApiService {
       }));
     } catch (error) {
       console.error('❌ Error fetching MT5 positions:', error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
       return [];
     }
   }
@@ -229,7 +329,8 @@ class MT5ApiService {
         params: { 
           id: this.token,
           symbol: symbol
-        }
+        },
+        timeout: 10000
       });
       
       console.log(`✅ MT5 quote for ${symbol}:`, response.data);
@@ -247,6 +348,12 @@ class MT5ApiService {
       };
     } catch (error) {
       console.error(`❌ Error fetching MT5 quote for ${symbol}:`, error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
       return null;
     }
   }
@@ -270,7 +377,8 @@ class MT5ApiService {
           symbol: symbol,
           timeframe: mt5Timeframe,
           count: count
-        }
+        },
+        timeout: 20000
       });
       
       console.log(`✅ MT5 history for ${symbol} (${timeframe}):`, response.data);
@@ -290,6 +398,12 @@ class MT5ApiService {
       }));
     } catch (error) {
       console.error(`❌ Error fetching MT5 history for ${symbol}:`, error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
       return [];
     }
   }
@@ -305,7 +419,8 @@ class MT5ApiService {
       console.log('🔄 Fetching MT5 pending orders...');
       
       const response = await axios.get(`${this.apiUrl}/OrdersGet`, {
-        params: { id: this.token }
+        params: { id: this.token },
+        timeout: 15000
       });
       
       console.log('✅ MT5 pending orders response:', response.data);
@@ -318,6 +433,12 @@ class MT5ApiService {
       return response.data;
     } catch (error) {
       console.error('❌ Error fetching MT5 pending orders:', error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        throw new Error('Authentication failed. MT5 session may have expired. Please reconnect.');
+      }
+      
       return [];
     }
   }
@@ -345,7 +466,10 @@ class MT5ApiService {
       if (takeProfit) params.tp = takeProfit;
       if (comment) params.comment = comment;
       
-      const response = await axios.get(`${this.apiUrl}/OrderSend`, { params });
+      const response = await axios.get(`${this.apiUrl}/OrderSend`, { 
+        params,
+        timeout: 15000
+      });
       
       console.log('✅ MT5 trade execution response:', response.data);
       
@@ -363,6 +487,15 @@ class MT5ApiService {
       }
     } catch (error) {
       console.error('❌ Error executing MT5 trade:', error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        return {
+          success: false,
+          message: 'Authentication failed. MT5 session may have expired. Please reconnect.'
+        };
+      }
+      
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error'
@@ -386,7 +519,8 @@ class MT5ApiService {
           ticket: ticket,
           lots: 0, // 0 means close all
           slippage: 10
-        }
+        },
+        timeout: 15000
       });
       
       console.log(`✅ MT5 position close response:`, response.data);
@@ -404,6 +538,15 @@ class MT5ApiService {
       }
     } catch (error) {
       console.error(`❌ Error closing MT5 position ${ticket}:`, error);
+      
+      // Handle authentication errors specifically
+      if (axios.isAxiosError(error) && error.response?.status === 401) {
+        return {
+          success: false,
+          message: 'Authentication failed. MT5 session may have expired. Please reconnect.'
+        };
+      }
+      
       return {
         success: false,
         message: error instanceof Error ? error.message : 'Unknown error'
