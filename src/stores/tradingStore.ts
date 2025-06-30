@@ -321,32 +321,34 @@ export const useTradingStore = create<TradingState>((set, get) => ({
       }
 
       const { data: robotsData, error } = await robotsQuery;
+      const robots: Robot[] = robotsData?.map(robot => {
+        // Calculate floating P&L for this robot
+        const floatingProfit = floatingPnLByBotToken[robot.bot_token] || 0;
+        
+        return {
+          id: robot.id,
+          name: robot.name,
+          symbol: robot.symbol, // Can be null for "All Symbols"
+          isActive: robot.is_active || false,
+          strategy: robot.strategy,
+          riskLevel: robot.risk_level as 'LOW' | 'MEDIUM' | 'HIGH',
+          maxLotSize: parseFloat(robot.max_lot_size),
+          stopLoss: robot.stop_loss,
+          takeProfit: robot.take_profit,
+          createdAt: robot.created_at,
+          botToken: robot.bot_token || generateBotToken(), // Generate if missing
+          mt5AccountId: robot.mt5_account_id, // Include the MT5 account ID
+          performance: {
+            totalTrades: robot.total_trades || 0,
+            winRate: parseFloat(robot.win_rate) || 0,
+            // Add floating profit for real-time display
+            currentProfit: parseFloat(robot.profit) + floatingProfit,
+            floatingProfit: floatingProfit,
+            profit: parseFloat(robot.profit) || 0,
+          },
+        };
+      }) || [];
 
-      if (error) {
-        console.error('Error fetching robots:', error);
-        toast.error('Failed to load trading robots');
-        return;
-      }
-
-     // Get current positions to calculate floating P&L
-     const positions = get().positions;
-     
-     // Create a map of bot tokens to floating P&L
-     const floatingPnLByBotToken: Record<string, number> = {};
-     
-     // Calculate floating P&L for each robot based on open positions
-     positions.forEach(position => {
-       if (position.botToken) {
-         if (!floatingPnLByBotToken[position.botToken]) {
-           floatingPnLByBotToken[position.botToken] = 0;
-         }
-         floatingPnLByBotToken[position.botToken] += position.profit;
-       }
-     });
-     
-       // Calculate floating P&L for this robot
-       const floatingProfit = floatingPnLByBotToken[robot.bot_token] || 0;
-       
      console.log('📊 Floating P&L by bot token:', floatingPnLByBotToken);
       const robots: Robot[] = robotsData?.map(robot => ({
         id: robot.id,
