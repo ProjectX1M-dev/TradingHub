@@ -326,6 +326,22 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         const floatingProfit = floatingPnLByBotToken[robot.bot_token] || 0;
         
         return {
+      // Calculate floating P&L for each robot based on open positions
+      const positions = get().positions;
+      const floatingPnLByBotToken: Record<string, number> = {};
+      
+      // Group positions by bot token
+      positions.forEach(position => {
+        if (position.botToken) {
+          if (!floatingPnLByBotToken[position.botToken]) {
+            floatingPnLByBotToken[position.botToken] = 0;
+          }
+          floatingPnLByBotToken[position.botToken] += position.profit;
+        }
+      });
+      
+      console.log('📊 Floating P&L by bot token:', floatingPnLByBotToken);
+      
       const robots: Robot[] = robotsData?.map(robot => ({
         id: robot.id,
         name: robot.name,
@@ -346,6 +362,10 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           currentProfit: parseFloat(robot.profit) + (floatingPnLByBotToken[robot.bot_token] || 0),
           floatingProfit: floatingPnLByBotToken[robot.bot_token] || 0,
           profit: parseFloat(robot.profit) || 0,
+          // Add floating profit from open positions
+          floatingProfit: floatingPnLByBotToken[robot.bot_token] || 0,
+          // Calculate current profit (stored + floating)
+          currentProfit: parseFloat(robot.profit) + (floatingPnLByBotToken[robot.bot_token] || 0)
         },
       })) || [];
 
@@ -1336,8 +1356,8 @@ export const useTradingStore = create<TradingState>((set, get) => ({
                 performance: { 
                   ...r.performance,
                   ...performance,
-                 // Preserve floating profit when updating stored profit
-                 currentProfit: (performance.profit || r.performance.profit) + (r.performance.floatingProfit || 0),
+                  // Preserve floating profit when updating stored profit
+                  currentProfit: (performance.profit || r.performance.profit) + (r.performance.floatingProfit || 0)
                 } 
               }
             : r
