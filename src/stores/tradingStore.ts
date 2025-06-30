@@ -366,7 +366,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           winRate: parseFloat(robot.win_rate) || 0,
            // Add floating profit for real-time display
            currentProfit: parseFloat(robot.profit) + floatingProfit,
-           floatingProfit: floatingProfit
+          floatingProfit: floatingProfit,
           profit: parseFloat(robot.profit) || 0,
         },
       })) || [];
