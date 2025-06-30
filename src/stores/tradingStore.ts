@@ -364,9 +364,9 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         performance: {
           totalTrades: robot.total_trades || 0,
           winRate: parseFloat(robot.win_rate) || 0,
-           // Add floating profit for real-time display
-           currentProfit: parseFloat(robot.profit) + floatingProfit,
-          floatingProfit: floatingProfit,
+          // Add floating profit for real-time display
+          currentProfit: parseFloat(robot.profit) + (floatingPnLByBotToken[robot.bot_token] || 0),
+          floatingProfit: floatingPnLByBotToken[robot.bot_token] || 0,
           profit: parseFloat(robot.profit) || 0,
         },
       })) || [];
