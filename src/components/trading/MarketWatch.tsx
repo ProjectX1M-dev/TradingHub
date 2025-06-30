@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useTradingStore } from '../../stores/tradingStore';
 import { Search, TrendingUp, TrendingDown, Star, StarOff, Play } from 'lucide-react';
 import toast from 'react-hot-toast';
-import mt5ApiService from '../../lib/mt5ApiService';
-import { useAuthStore } from '../../stores/authStore';
 
 interface MarketWatchProps {
   onSymbolSelect: (symbol: string) => void;
@@ -31,59 +29,49 @@ export const MarketWatch: React.FC<MarketWatchProps> = ({
   const [filter, setFilter] = useState<'all' | 'favorites' | 'forex' | 'crypto' | 'indices'>('all');
   
   const { availableSymbols, executeSignal } = useTradingStore();
-  const { isAuthenticated } = useAuthStore();
 
-  // Fetch real-time quotes
+  // Simulate real-time quotes
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    const fetchQuotes = async () => {
-      if (!isAuthenticated) {
-        setQuotes([]);
-        return;
-      }
-
-      const fetchedQuotes: SymbolQuote[] = [];
-      for (const symbol of availableSymbols) {
-        try {
-          const quote = await mt5ApiService.getQuote(symbol);
-          if (quote) {
-            // Simulate change, changePercent, high, low, volume for display purposes
-            // In a real scenario, these would come from the MT5 API as well
-            const prevQuote = quotes.find(q => q.symbol === symbol);
-            const prevClose = prevQuote ? (prevQuote.bid + prevQuote.ask) / 2 : (quote.bid + quote.ask) / 2;
-            const currentMid = (quote.bid + quote.ask) / 2;
-            const change = currentMid - prevClose;
-            const changePercent = (change / prevClose) * 100;
-            const high = Math.max(prevQuote?.high || currentMid, currentMid + Math.abs(change) * 2);
-            const low = Math.min(prevQuote?.low || currentMid, currentMid - Math.abs(change) * 2);
-            const volume = Math.floor(Math.random() * 1000000);
-
-            fetchedQuotes.push({
-              symbol,
-              bid: quote.bid,
-              ask: quote.ask,
-              change,
-              changePercent,
-              high,
-              low,
-              volume
-            });
-          }
-        } catch (error) {
-          console.error(`Failed to fetch quote for ${symbol}:`, error);
-        }
-      }
-      setQuotes(fetchedQuotes);
+    const generateQuote = (symbol: string): SymbolQuote => {
+      const basePrice = symbol === 'EURUSD' ? 1.0850 : 
+                       symbol === 'GBPUSD' ? 1.2650 :
+                       symbol === 'USDJPY' ? 150.25 :
+                       symbol === 'AUDUSD' ? 0.6750 :
+                       symbol === 'USDCAD' ? 1.3450 :
+                       symbol === 'NZDUSD' ? 0.6150 :
+                       symbol === 'USDCHF' ? 0.9050 :
+                       symbol === 'XAUUSD' ? 2050.50 :
+                       symbol === 'BTCUSD' ? 45000 :
+                       symbol === 'US30' ? 35000 : 1.0000;
+      
+      const spread = symbol.includes('USD') ? 0.0002 : 
+                    symbol.includes('XAU') ? 0.50 :
+                    symbol.includes('BTC') ? 10 : 0.0002;
+      
+      const variation = (Math.random() - 0.5) * 0.002;
+      const change = (Math.random() - 0.5) * 0.01;
+      
+      return {
+        symbol,
+        bid: basePrice + variation,
+        ask: basePrice + variation + spread,
+        change: change,
+        changePercent: (change / basePrice) * 100,
+        high: basePrice + Math.abs(variation) + 0.005,
+        low: basePrice - Math.abs(variation) - 0.005,
+        volume: Math.floor(Math.random() * 1000000)
+      };
     };
 
-    if (isAuthenticated) {
-      fetchQuotes(); // Initial fetch
-      interval = setInterval(fetchQuotes, 2000); // Refresh every 2 seconds
-    }
+    const updateQuotes = () => {
+      const newQuotes = availableSymbols.slice(0, 50).map(generateQuote);
+      setQuotes(newQuotes);
+    };
 
+    updateQuotes();
+    const interval = setInterval(updateQuotes, 2000);
     return () => clearInterval(interval);
-  }, [isAuthenticated, availableSymbols]);
+  }, [availableSymbols]);
 
   const toggleFavorite = (symbol: string) => {
     setFavorites(prev => 

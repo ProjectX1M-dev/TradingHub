@@ -413,7 +413,7 @@ export const BrokerSetup: React.FC = () => {
                         </div>
                         {isSelected && (
                           <div className={`w-5 h-5 rounded-full bg-${accountType.color}-500 flex items-center justify-center`}>
-                            <CheckCircle className="w-3 h-3 text-white" />
+                            <div className="w-2 h-2 bg-white rounded-full"></div>
                           </div>
                         )}
                       </label>

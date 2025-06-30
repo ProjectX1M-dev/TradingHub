@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
-import mt5ApiService from '../../lib/mt5ApiService';
-import { useAuthStore } from '../../stores/authStore';
 
 interface Order {
   id: string;
@@ -21,60 +19,54 @@ interface Order {
 export const OrderBook: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [filter, setFilter] = useState<'all' | 'pending' | 'filled' | 'cancelled'>('all');
-  const { isAuthenticated } = useAuthStore();
 
-  // Fetch real pending orders
+  // Generate sample orders
   useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    const fetchOrders = async () => {
-      if (!isAuthenticated) {
-        setOrders([]);
-        return;
+    const sampleOrders: Order[] = [
+      {
+        id: '1',
+        ticket: 123456,
+        symbol: 'EURUSD',
+        type: 'Buy Limit',
+        volume: 0.1,
+        openPrice: 1.0800,
+        currentPrice: 1.0850,
+        stopLoss: 1.0750,
+        takeProfit: 1.0900,
+        status: 'pending',
+        timestamp: new Date(Date.now() - 3600000).toISOString(),
+        comment: 'Support level entry'
+      },
+      {
+        id: '2',
+        ticket: 123457,
+        symbol: 'GBPUSD',
+        type: 'Sell Stop',
+        volume: 0.05,
+        openPrice: 1.2600,
+        currentPrice: 1.2650,
+        stopLoss: 1.2700,
+        takeProfit: 1.2500,
+        status: 'pending',
+        timestamp: new Date(Date.now() - 7200000).toISOString(),
+        comment: 'Breakout trade'
+      },
+      {
+        id: '3',
+        ticket: 123458,
+        symbol: 'USDJPY',
+        type: 'Buy Limit',
+        volume: 0.2,
+        openPrice: 149.50,
+        currentPrice: 150.25,
+        status: 'filled',
+        timestamp: new Date(Date.now() - 10800000).toISOString(),
+        comment: 'Filled at market open'
       }
-      try {
-        // Assuming mt5ApiService.getPendingOrders() fetches both pending and opened orders
-        // and returns them in a format compatible with the 'Order' interface.
-        // You might need to adapt the data structure based on your actual API response.
-        const fetchedOrders = await mt5ApiService.getPendingOrders();
-        if (fetchedOrders) {
-          // For demonstration, let's assume fetchedOrders are already in the correct format
-          // and include a 'status' field. If not, you'll need to map them.
-          setOrders(fetchedOrders.map((order: any) => ({
-            id: order.ticket.toString(),
-            ticket: order.ticket,
-            symbol: order.symbol,
-            type: order.type === 'ORDER_TYPE_BUY_LIMIT' ? 'Buy Limit' : // Map MT5 order types
-                  order.type === 'ORDER_TYPE_SELL_LIMIT' ? 'Sell Limit' :
-                  order.type === 'ORDER_TYPE_BUY_STOP' ? 'Buy Stop' :
-                  order.type === 'ORDER_TYPE_SELL_STOP' ? 'Sell Stop' :
-                  order.type === 'ORDER_TYPE_BUY' ? 'Buy Limit' : 'Sell Limit', // Fallback for market orders if they appear
-            volume: order.volume || order.lots,
-            openPrice: order.price_open || order.price_current,
-            currentPrice: order.price_current,
-            stopLoss: order.sl,
-            takeProfit: order.tp,
-            status: order.state === 'ORDER_STATE_PENDING' ? 'pending' : // Map MT5 order states
-                    order.state === 'ORDER_STATE_FILLED' ? 'filled' :
-                    order.state === 'ORDER_STATE_CANCELED' ? 'cancelled' :
-                    order.state === 'ORDER_STATE_EXPIRED' ? 'expired' : 'pending',
-            timestamp: new Date(order.time_setup * 1000).toISOString(), // Convert Unix timestamp to ISO string
-            comment: order.comment
-          })));
-        }
-      } catch (error) {
-        console.error('Failed to fetch orders:', error);
-        setOrders([]);
-      }
-    };
+    ];
 
-    if (isAuthenticated) {
-      fetchOrders(); // Initial fetch
-      interval = setInterval(fetchOrders, 5000); // Refresh every 5 seconds
-    }
-
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+    setOrders(sampleOrders);
+  }, []);
 
   const filteredOrders = orders.filter(order => 
     filter === 'all' || order.status === filter
@@ -115,27 +107,12 @@ export const OrderBook: React.FC = () => {
     }
   };
 
-  const handleCancelOrder = async (orderId: string) => {
-    // In a real application, you would call an MT5 API method to cancel the order
-    // For now, we'll simulate the status change
-    console.log(`Attempting to cancel order ${orderId}`);
-    // Assuming mt5ApiService has a cancelOrder method
-    try {
-      // const success = await mt5ApiService.cancelOrder(orderId);
-      // if (success) {
-        setOrders(prev => prev.map(order => 
-          order.id === orderId 
-            ? { ...order, status: 'cancelled' as const }
-            : order
-        ));
-        // toast.success(`Order ${orderId} cancelled successfully`);
-      // } else {
-        // toast.error(`Failed to cancel order ${orderId}`);
-      // }
-    } catch (error) {
-      console.error('Error canceling order:', error);
-      // toast.error('Error canceling order');
-    }
+  const handleCancelOrder = (orderId: string) => {
+    setOrders(prev => prev.map(order => 
+      order.id === orderId 
+        ? { ...order, status: 'cancelled' as const }
+        : order
+    ));
   };
 
   const pendingOrders = orders.filter(o => o.status === 'pending').length;

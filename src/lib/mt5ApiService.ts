@@ -112,13 +112,6 @@ class MT5ApiService {
         };
       }
 
-      if (this.apiKey.length < 10) {
-        return {
-          success: false,
-          message: 'MT5 API key appears to be invalid. Please verify your VITE_MT5_API_KEY in .env file.'
-        };
-      }
-      
       console.log('🔑 Using API URL:', this.apiUrl);
       console.log('🔑 API Key configured:', this.apiKey ? `${this.apiKey.substring(0, 8)}...` : 'NO');
       console.log('📋 Connection parameters:', {
@@ -127,86 +120,16 @@ class MT5ApiService {
         passwordLength: credentials.password.length
       });
       
-      // Try different authentication methods based on the API provider
-      let response;
-      
-      try {
-        // Method 1: Use API key as 'id' parameter (most common)
-        response = await axios.get(`${this.apiUrl}/ConnectEx`, {
-          params: {
-            id: this.apiKey,
-            user: credentials.accountNumber,
-            password: credentials.password,
-            server: credentials.serverName
-          },
-          timeout: 30000,
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'MT5-Trading-App/1.0'
-          }
-        });
-      } catch (firstError) {
-        console.log('🔄 First auth method failed, trying alternative...');
-        
-        // Method 2: Use API key in Authorization header
-        try {
-          response = await axios.get(`${this.apiUrl}/ConnectEx`, {
-            params: {
-              user: credentials.accountNumber,
-              password: credentials.password,
-              server: credentials.serverName
-            },
-            timeout: 30000,
-            headers: {
-              'Accept': 'application/json',
-              'Authorization': `Bearer ${this.apiKey}`,
-              'User-Agent': 'MT5-Trading-App/1.0'
-            }
-          });
-        } catch (secondError) {
-          console.log('🔄 Second auth method failed, trying third method...');
-          
-          // Method 3: Use API key as 'apikey' parameter
-          try {
-            response = await axios.get(`${this.apiUrl}/ConnectEx`, {
-              params: {
-                apikey: this.apiKey,
-                user: credentials.accountNumber,
-                password: credentials.password,
-                server: credentials.serverName
-              },
-              timeout: 30000,
-              headers: {
-                'Accept': 'application/json',
-                'User-Agent': 'MT5-Trading-App/1.0'
-              }
-            });
-          } catch (thirdError) {
-            console.log('🔄 Third auth method failed, trying POST method...');
-            
-            // Method 4: Try POST request with form data
-            try {
-              const formData = new URLSearchParams();
-              formData.append('id', this.apiKey);
-              formData.append('user', credentials.accountNumber);
-              formData.append('password', credentials.password);
-              formData.append('server', credentials.serverName);
-              
-              response = await axios.post(`${this.apiUrl}/ConnectEx`, formData, {
-                timeout: 30000,
-                headers: {
-                  'Content-Type': 'application/x-www-form-urlencoded',
-                  'Accept': 'application/json',
-                  'User-Agent': 'MT5-Trading-App/1.0'
-                }
-              });
-            } catch (fourthError) {
-              // If all methods fail, throw the original error with enhanced message
-              throw firstError;
-            }
-          }
-        }
-      }
+      // Make the connection request
+      const response = await axios.get(`${this.apiUrl}/ConnectEx`, {
+        params: {
+          id: this.apiKey,
+          user: credentials.accountNumber,
+          password: credentials.password,
+          server: credentials.serverName
+        },
+        timeout: 30000
+      });
       
       console.log('✅ MT5 connection response:', response.data);
       
@@ -254,7 +177,7 @@ class MT5ApiService {
         if (error.response?.status === 401) {
           return {
             success: false,
-            message: 'Invalid MT5 API key or credentials. Please verify:\n• Your VITE_MT5_API_KEY in .env file is correct\n• Your MT5 account credentials are valid\n• Your MT5 account is active and not suspended\n• The server name matches your broker\'s server'
+            message: 'Invalid MT5 API key. Please check your .env file contains the correct VITE_MT5_API_KEY and restart the development server.'
           };
         } else if (error.response?.status === 403) {
           return {
