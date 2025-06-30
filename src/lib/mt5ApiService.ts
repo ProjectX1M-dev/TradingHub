@@ -842,6 +842,7 @@ class MT5ApiService {
     price?: number;
     sl?: number;
     tp?: number;
+   comment?: string;
     comment?: string;
   }): Promise<any> {
     try {
@@ -984,6 +985,7 @@ class MT5ApiService {
           console.warn(`⚠️ [getQuote] Failed to subscribe to symbol: ${actualSymbol}, but will attempt to get quote anyway`);
         }
       } else {
+     if (order.comment) params.append('comment', order.comment);
         console.warn(`⚠️ [getQuote] No matching symbol found for ${symbol}, will attempt with original symbol`);
       }
 

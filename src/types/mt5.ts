@@ -37,6 +37,7 @@ export interface Position {
   commission: number;
   openTime: string;
   comment: string;
+  botToken?: string; // Added to link position to robot
 }
 
 export interface TradingSignal {
@@ -71,6 +72,8 @@ export interface Robot {
     totalTrades: number;
     winRate: number;
     profit: number;
+   currentProfit?: number; // Combined stored + floating profit for display
+   floatingProfit?: number; // Current floating P&L from open positions
   };
 }
 

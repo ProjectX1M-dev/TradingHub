@@ -175,7 +175,10 @@ export const RobotsList: React.FC = () => {
   const activeRobots = robots.filter(r => r.isActive).length;
   const totalTrades = robots.reduce((sum, r) => sum + r.performance.totalTrades, 0);
   const avgWinRate = totalRobots > 0 ? robots.reduce((sum, r) => sum + r.performance.winRate, 0) / totalRobots : 0;
-  const totalProfit = robots.reduce((sum, r) => sum + r.performance.profit, 0);
+  // Use currentProfit (which includes floating P&L) for the total
+  const totalProfit = robots.reduce((sum, r) => sum + (r.performance.currentProfit || r.performance.profit), 0);
+  // Calculate total floating profit separately
+  const totalFloatingProfit = robots.reduce((sum, r) => sum + (r.performance.floatingProfit || 0), 0);
 
   // Get strategy icon
   const getStrategyIcon = (strategy: string) => {
@@ -271,7 +274,9 @@ export const RobotsList: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
               {robots.map((robot) => {
                 const profitGradientClass = getProfitGradientClass(robot.performance.profit, robot.performance.winRate);
-                const profitStatus = getProfitStatus(robot.performance.profit);
+                // Use currentProfit (which includes floating P&L) for display
+                const displayProfit = robot.performance.currentProfit || robot.performance.profit;
+                const profitStatus = getProfitStatus(displayProfit);
                 const StrategyIcon = getStrategyIcon(robot.strategy);
                 
                 return (
@@ -368,10 +373,21 @@ export const RobotsList: React.FC = () => {
                         <p className="text-xs text-gray-600 font-medium">Total Profit</p>
                       </div>
                       <p className={`text-xl font-bold ${
-                        robot.performance.profit >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                       displayProfit >= 0 ? 'text-emerald-700' : 'text-rose-700'
                       }`}>
-                        ${robot.performance.profit.toFixed(2)}
+                       ${displayProfit.toFixed(2)}
                       </p>
+                     {totalFloatingProfit !== 0 && (
+                       <p className={`text-xs ${totalFloatingProfit > 0 ? 'text-emerald-500' : 'text-rose-500'}`}>
+                         ${(displayProfit / robot.performance.totalTrades).toFixed(2)} per trade
+                       </p>
+                     )}
+                     {/* Show floating profit if available */}
+                     {robot.performance.floatingProfit !== 0 && robot.performance.floatingProfit !== undefined && (
+                       <p className={`text-xs ${robot.performance.floatingProfit > 0 ? 'text-emerald-500' : 'text-rose-500'} font-medium`}>
+                         (${robot.performance.floatingProfit.toFixed(2)} floating)
+                       </p>
+                     )}
                       {robot.performance.totalTrades > 0 && (
                         <p className={`text-xs ${profitStatus.color} font-medium`}>
                           ${(robot.performance.profit / robot.performance.totalTrades).toFixed(2)} per trade

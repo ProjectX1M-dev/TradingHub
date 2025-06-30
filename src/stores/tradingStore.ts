@@ -129,8 +129,56 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           missingPositions.map(p => `${p.ticket} (${p.symbol})`));
       }
       
+     // Extract bot tokens from position comments if available
+     const enhancedPositions = validPositions.map(pos => {
+       // Check if comment contains a bot token (format: "bot_[uuid]")
+       const botTokenMatch = pos.comment && pos.comment.match(/bot_([a-zA-Z0-9-]+)/);
+       return {
+         ...pos,
+         botToken: botTokenMatch ? botTokenMatch[0] : undefined
+       };
+     });
+     
+     // Update floating P&L for robots based on open positions
+     if (enhancedPositions.length > 0) {
+       // Get current robots
+       const robots = get().robots;
+       
+       // Calculate floating P&L by robot
+       const floatingPnLByBotToken: Record<string, number> = {};
+       
+       // Initialize with 0 for all robots
+       robots.forEach(robot => {
+         floatingPnLByBotToken[robot.botToken] = 0;
+       });
+       
+       // Add profit from each position to its associated robot
+       enhancedPositions.forEach(pos => {
+         if (pos.botToken && floatingPnLByBotToken[pos.botToken] !== undefined) {
+           floatingPnLByBotToken[pos.botToken] += pos.profit;
+         }
+       });
+       
+       // Update robots with floating P&L
+       const updatedRobots = robots.map(robot => {
+         // Only update the displayed profit, not the stored profit in the database
+         const floatingProfit = floatingPnLByBotToken[robot.botToken] || 0;
+         return {
+           ...robot,
+           performance: {
+             ...robot.performance,
+             // Add floating profit to the stored profit for display
+             currentProfit: robot.performance.profit + floatingProfit,
+             floatingProfit: floatingProfit
+           }
+         };
+       });
+       
+       // Update robots state with floating P&L
+       set({ robots: updatedRobots });
+     }
       set({ 
-        positions: validPositions, 
+       positions: enhancedPositions, 
         lastPositionsUpdate: new Date(),
         error: null
       });
@@ -280,6 +328,26 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         return;
       }
 
+     // Get current positions to calculate floating P&L
+     const positions = get().positions;
+     
+     // Create a map of bot tokens to floating P&L
+     const floatingPnLByBotToken: Record<string, number> = {};
+     
+     // Calculate floating P&L for each robot based on open positions
+     positions.forEach(position => {
+       if (position.botToken) {
+         if (!floatingPnLByBotToken[position.botToken]) {
+           floatingPnLByBotToken[position.botToken] = 0;
+         }
+         floatingPnLByBotToken[position.botToken] += position.profit;
+       }
+     });
+     
+       // Calculate floating P&L for this robot
+       const floatingProfit = floatingPnLByBotToken[robot.bot_token] || 0;
+       
+     console.log('📊 Floating P&L by bot token:', floatingPnLByBotToken);
       const robots: Robot[] = robotsData?.map(robot => ({
         id: robot.id,
         name: robot.name,
@@ -296,6 +364,9 @@ export const useTradingStore = create<TradingState>((set, get) => ({
         performance: {
           totalTrades: robot.total_trades || 0,
           winRate: parseFloat(robot.win_rate) || 0,
+           // Add floating profit for real-time display
+           currentProfit: parseFloat(robot.profit) + floatingProfit,
+           floatingProfit: floatingProfit
           profit: parseFloat(robot.profit) || 0,
         },
       })) || [];
@@ -634,6 +705,19 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           console.log(`🔄 Symbol adjusted for ${accountType} account: "${signalData.symbol}" -> "${mt5Symbol}"`);
         }
         
+       // Prepare comment with bot token for position tracking
+       let orderComment = signalData.botToken ? `bot_${signalData.botToken}` : '';
+       
+       // Add strategy name if available
+       if (signalData.source && signalData.source !== 'manual') {
+         orderComment = orderComment ? `${orderComment} - ${signalData.source}` : signalData.source;
+       }
+       
+       // Add robot name if available
+       if (targetRobot?.name) {
+         orderComment = orderComment ? `${orderComment} - ${targetRobot.name}` : targetRobot.name;
+       }
+       
         // For BUY/SELL signals, execute the trade via MT5 API using the MT5 symbol
         orderResult = await mt5ApiService.sendOrder({
           symbol: mt5Symbol, // Use the account-type-specific symbol
@@ -642,6 +726,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           price: signalData.price,
           sl: signalData.stopLoss,
           tp: signalData.takeProfit
+         comment: orderComment
         });
         
         success = orderResult.retcode === 10009;
@@ -1273,6 +1358,8 @@ export const useTradingStore = create<TradingState>((set, get) => ({
                 performance: { 
                   ...r.performance,
                   ...performance
+                 // Preserve floating profit when updating stored profit
+                 currentProfit: (performance.profit || r.performance.profit) + (r.performance.floatingProfit || 0),
                 } 
               }
             : r
