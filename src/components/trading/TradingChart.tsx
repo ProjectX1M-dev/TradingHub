@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BarChart3, Activity } from 'lucide-react';
+import mt5ApiService from '../../lib/mt5ApiService';
+import { useAuthStore } from '../../stores/authStore';
 
 interface TradingChartProps {
   symbol: string;
@@ -18,51 +20,59 @@ export const TradingChart: React.FC<TradingChartProps> = ({ symbol }) => {
   const [timeframe, setTimeframe] = useState('1H');
   const [chartData, setChartData] = useState<CandlestickData[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
+  const { isAuthenticated } = useAuthStore();
 
-  // Generate sample chart data
+  // Fetch historical chart data and real-time price
   useEffect(() => {
-    const generateChartData = () => {
-      const data: CandlestickData[] = [];
-      const basePrice = symbol === 'EURUSD' ? 1.0850 : 
-                       symbol === 'GBPUSD' ? 1.2650 :
-                       symbol === 'USDJPY' ? 150.25 : 1.0000;
-      
-      let currentPrice = basePrice;
-      const now = Date.now();
-      const timeframeMs = timeframe === '1M' ? 60000 : 
-                         timeframe === '5M' ? 300000 :
-                         timeframe === '15M' ? 900000 :
-                         timeframe === '1H' ? 3600000 :
-                         timeframe === '4H' ? 14400000 : 86400000;
+    let historyInterval: NodeJS.Timeout;
+    let priceInterval: NodeJS.Timeout;
 
-      for (let i = 100; i >= 0; i--) {
-        const time = now - (i * timeframeMs);
-        const open = currentPrice;
-        const change = (Math.random() - 0.5) * 0.01;
-        const high = open + Math.abs(change) + Math.random() * 0.005;
-        const low = open - Math.abs(change) - Math.random() * 0.005;
-        const close = open + change;
-        
-        data.push({
-          time,
-          open,
-          high,
-          low,
-          close,
-          volume: Math.floor(Math.random() * 1000000)
-        });
-        
-        currentPrice = close;
+    const fetchChartData = async () => {
+      if (!isAuthenticated) {
+        setChartData([]);
+        return;
       }
-      
-      setChartData(data);
-      setCurrentPrice(currentPrice);
+      try {
+        // Assuming mt5ApiService.getHistory returns data in CandlestickData format
+        const history = await mt5ApiService.getHistory(symbol, timeframe, 100); // Fetch 100 bars
+        if (history) {
+          setChartData(history);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch historical data for ${symbol} (${timeframe}):`, error);
+        setChartData([]);
+      }
     };
 
-    generateChartData();
-    const interval = setInterval(generateChartData, 5000);
-    return () => clearInterval(interval);
-  }, [symbol, timeframe]);
+    const fetchCurrentPrice = async () => {
+      if (!isAuthenticated) {
+        setCurrentPrice(0);
+        return;
+      }
+      try {
+        const quote = await mt5ApiService.getQuote(symbol);
+        if (quote) {
+          setCurrentPrice((quote.bid + quote.ask) / 2);
+        }
+      } catch (error) {
+        console.error(`Failed to fetch current price for ${symbol}:`, error);
+        setCurrentPrice(0);
+      }
+    };
+
+    if (isAuthenticated) {
+      fetchChartData(); // Initial fetch for historical data
+      historyInterval = setInterval(fetchChartData, 60000); // Refresh historical data every minute
+
+      fetchCurrentPrice(); // Initial fetch for current price
+      priceInterval = setInterval(fetchCurrentPrice, 1000); // Refresh current price every second
+    }
+
+    return () => {
+      clearInterval(historyInterval);
+      clearInterval(priceInterval);
+    };
+  }, [symbol, timeframe, isAuthenticated]);
 
   const timeframes = ['1M', '5M', '15M', '1H', '4H', '1D'];
 
