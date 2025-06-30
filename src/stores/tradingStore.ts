@@ -725,7 +725,7 @@ export const useTradingStore = create<TradingState>((set, get) => ({
           volume: signalData.volume,
           price: signalData.price,
           sl: signalData.stopLoss,
-          tp: signalData.takeProfit
+          tp: signalData.takeProfit,
          comment: orderComment
         });
         
