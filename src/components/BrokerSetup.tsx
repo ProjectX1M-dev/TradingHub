@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { TrendingUp, Building, Key, AlertCircle, ArrowRight, CheckCircle, Plus, HelpCircle, ExternalLink, Lock, ArrowLeft } from 'lucide-react';
+import { TrendingUp, Building, Key, AlertCircle, ArrowRight, CheckCircle, Plus, HelpCircle, ExternalLink, Lock, ArrowLeft, RefreshCw } from 'lucide-react';
 import { MT5Credentials } from '../types/mt5';
 import { useAuthStore } from '../stores/authStore';
 import { supabase } from '../lib/supabase';
@@ -261,6 +261,16 @@ export const BrokerSetup: React.FC = () => {
            lowerError.includes('wrong');
   };
 
+  // Helper function to determine if error is API key related
+  const isApiKeyError = (error: string) => {
+    const lowerError = error.toLowerCase();
+    return lowerError.includes('api key') ||
+           lowerError.includes('apikey') ||
+           lowerError.includes('invalid mt5 api key') ||
+           lowerError.includes('missing mt5 api key') ||
+           lowerError.includes('restart the development server');
+  };
+
   const getAccountTypeInfo = (type: string) => {
     return ACCOUNT_TYPES.find(accountType => accountType.id === type);
   };
@@ -517,10 +527,31 @@ export const BrokerSetup: React.FC = () => {
                     <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
                     <div className="flex-1">
                       <p className="text-red-800 text-sm font-medium">Connection Failed</p>
-                      <p className="text-red-700 text-sm mt-1">{connectionError}</p>
+                      <p className="text-red-700 text-sm mt-1 whitespace-pre-line">{connectionError}</p>
                       
-                      {/* Show helpful tips for credential errors */}
-                      {isCredentialError(connectionError) && (
+                      {/* Show API key specific help for API key errors */}
+                      {isApiKeyError(connectionError) && (
+                        <div className="mt-3 p-3 bg-red-100 rounded-md">
+                          <p className="text-red-800 text-xs font-medium mb-2">🔑 API Key Configuration:</p>
+                          <ul className="text-red-700 text-xs space-y-1">
+                            <li>• Check your .env file contains VITE_MT5_API_KEY</li>
+                            <li>• Verify the API key is correct and active</li>
+                            <li>• Restart the development server after changing .env</li>
+                            <li>• Contact your MT5 API provider if the key is invalid</li>
+                          </ul>
+                          <button
+                            type="button"
+                            onClick={() => window.location.reload()}
+                            className="mt-2 text-red-600 hover:text-red-700 text-xs flex items-center space-x-1"
+                          >
+                            <RefreshCw className="w-3 h-3" />
+                            <span>Reload page after fixing .env</span>
+                          </button>
+                        </div>
+                      )}
+                      
+                      {/* Show credential help for credential errors */}
+                      {isCredentialError(connectionError) && !isApiKeyError(connectionError) && (
                         <div className="mt-3 p-3 bg-red-100 rounded-md">
                           <p className="text-red-800 text-xs font-medium mb-2">💡 Troubleshooting Tips:</p>
                           <ul className="text-red-700 text-xs space-y-1">
@@ -659,6 +690,19 @@ export const BrokerSetup: React.FC = () => {
                   }}
                 />
               </div>
+
+              {/* Show connection error in modal if it exists */}
+              {connectionError && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                  <div className="flex items-start space-x-2">
+                    <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <p className="text-red-800 text-xs font-medium">Connection Failed</p>
+                      <p className="text-red-700 text-xs mt-1 whitespace-pre-line">{connectionError}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="flex space-x-3">
                 <button

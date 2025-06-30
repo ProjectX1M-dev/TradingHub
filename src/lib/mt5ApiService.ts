@@ -30,7 +30,7 @@ class MT5ApiService {
   constructor() {
     // Use environment variable for MT5 API URL, fallback to default
     this.baseURL = import.meta.env.VITE_MT5_API_URL || 'https://mt5full2.mtapi.io';
-    this.apiKey = import.meta.env.VITE_MT5_API_KEY || '';
+    this.apiKey = import.meta.env.VITE_MT5_API_KEY || '970ef0fe-76d7-453d-8731-312bceb02433';
     
     this.apiClient = axios.create({
       baseURL: this.baseURL,
